@@ -1,0 +1,8 @@
+# Everything...
+*
+
+# ...except for the bare necessities
+!go.mod
+!go.sum
+!main.go
+!handlers.go
