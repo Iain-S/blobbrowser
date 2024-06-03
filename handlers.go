@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"html/template"
@@ -36,20 +38,17 @@ type BlobInfo struct {
 }
 
 // Home is the handler for the root path. It writes the list of blobs to the response.
-func Home(w http.ResponseWriter, r *http.Request, blobs map[string]BlobInfo) {
+func Home(
+	w http.ResponseWriter,
+	r *http.Request,
+	buffer *bytes.Buffer,
+) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	// use a http/template to render the list of blobs
-	t := template.Must(template.ParseFiles("home.html"))
-	err := t.Execute(
-		w,
-		TemplateData{
-			blobs,
-			"My Blobs",
-		},
-	)
+
+	_, err := w.Write(buffer.Bytes())
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +71,7 @@ func ByteCountIEC(b int64) string {
 
 // GetListBlobs wraps a handler function with a function that retrieves a list of blobs from Azure Blob Storage.
 func GetListBlobs(
-	f func(http.ResponseWriter, *http.Request, map[string]BlobInfo),
+	f func(http.ResponseWriter, *http.Request, *bytes.Buffer),
 ) func(http.ResponseWriter, *http.Request) {
 	// Get a list of blobs from Azure Blob Storage
 	accountName, ok := lookupEnv("AZURE_STORAGE_ACCOUNT_NAME")
@@ -170,9 +169,28 @@ func GetListBlobs(
 		}
 	}
 
+	var b bytes.Buffer
+	foo := bufio.NewWriter(&b)
+	// use a http/template to render the list of blobs
+	t := template.Must(template.ParseFiles("home.html"))
+	err = t.Execute(
+		foo,
+		TemplateData{
+			mapBlobs,
+			"My Blobs",
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	err = foo.Flush()
+	if err != nil {
+		panic(err)
+	}
+
 	closure := func(w http.ResponseWriter, r *http.Request) {
 		timerStart := time.Now()
-		f(w, r, mapBlobs)
+		f(w, r, &b)
 		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
 	}
 
