@@ -22,7 +22,7 @@ func TestHome(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ map[string]BlobInfo) {
 	}
 	handler := http.HandlerFunc(GetListBlobs(handlerFunc))
 
@@ -40,7 +40,7 @@ func TestGetListBlobs(_ *testing.T) {
 	}
 	fatal = func(_ ...interface{}) {
 	}
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ map[string]BlobInfo) {
 	}
 
 	listFunc := GetListBlobs(handlerFunc)
