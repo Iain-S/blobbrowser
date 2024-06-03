@@ -22,6 +22,16 @@ func main() {
 		"/",
 		http.TimeoutHandler(
 			http.HandlerFunc(
+				Login,
+			),
+			1*time.Second,
+			"<html><body>Request timeout!</body></html>\n",
+		),
+	)
+	http.DefaultServeMux.Handle(
+		"/list",
+		http.TimeoutHandler(
+			http.HandlerFunc(
 				GetListBlobs(Home),
 			),
 			1*time.Second,

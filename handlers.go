@@ -19,6 +19,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Variables that can be overridden for testing.
@@ -54,6 +55,25 @@ func Home(
 	}
 }
 
+func Login(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	t := template.Must(template.ParseFiles("login.html"))
+	err := t.Execute(
+		w,
+		nil,
+	)
+	if err != nil {
+		panic(err)
+	}
+}
+
 // https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
 func ByteCountIEC(b int64) string {
 	const unit = 1024
@@ -69,6 +89,11 @@ func ByteCountIEC(b int64) string {
 		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
+type HanderFuncs struct {
+	Home http.HandlerFunc
+	List http.HandlerFunc
+}
+
 // GetListBlobs wraps a handler function with a function that retrieves a list of blobs from Azure Blob Storage.
 func GetListBlobs(
 	f func(http.ResponseWriter, *http.Request, *bytes.Buffer),
@@ -81,6 +106,10 @@ func GetListBlobs(
 	containerName, ok := lookupEnv("AZURE_CONTAINER_NAME")
 	if !ok {
 		fatal("AZURE_CONTAINER_NAME could not be found")
+	}
+	secret, ok := lookupEnv("BLOBBROWSER_SECRET")
+	if !ok {
+		fatal("BLOBBROWSER_SECRET could not be found")
 	}
 	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
 
@@ -189,6 +218,18 @@ func GetListBlobs(
 	}
 
 	closure := func(w http.ResponseWriter, r *http.Request) {
+		password := r.URL.Query().Get("_passwordx")
+		if password == "" {
+			http.Error(w, "No password supplied", http.StatusUnauthorized)
+			return
+		}
+
+		err = bcrypt.CompareHashAndPassword([]byte(secret), []byte(password))
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
 		timerStart := time.Now()
 		f(w, r, &b)
 		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
