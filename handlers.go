@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
@@ -24,23 +25,54 @@ var (
 	fatal     = log.Fatal
 )
 
+type TemplateData struct {
+	Blobs map[string]BlobInfo
+	Title string
+}
+
+type BlobInfo struct {
+	URL  string
+	Size string
+}
+
 // Home is the handler for the root path. It writes the list of blobs to the response.
-func Home(w http.ResponseWriter, r *http.Request, blobs map[string]string) {
+func Home(w http.ResponseWriter, r *http.Request, blobs map[string]BlobInfo) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	// use a http/template to render the list of blobs
 	t := template.Must(template.ParseFiles("home.html"))
-	err := t.Execute(w, blobs)
+	err := t.Execute(
+		w,
+		TemplateData{
+			blobs,
+			"My Blobs",
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 }
 
+// https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
+func ByteCountIEC(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB",
+		float64(b)/float64(div), "KMGTPE"[exp])
+}
+
 // GetListBlobs wraps a handler function with a function that retrieves a list of blobs from Azure Blob Storage.
 func GetListBlobs(
-	f func(http.ResponseWriter, *http.Request, map[string]string),
+	f func(http.ResponseWriter, *http.Request, map[string]BlobInfo),
 ) func(http.ResponseWriter, *http.Request) {
 	// Get a list of blobs from Azure Blob Storage
 	accountName, ok := lookupEnv("AZURE_STORAGE_ACCOUNT_NAME")
@@ -54,9 +86,15 @@ func GetListBlobs(
 	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
 
 	slog.Info("Creating Azure credential.")
-	// use a managed identity credential in production
-	// cred, err := azidentity.NewDefaultAzureCredential(nil)
-	cred, err := azidentity.NewManagedIdentityCredential(nil)
+	// Note, use a managed identity credential in production to avoid timeouts.
+	var cred azcore.TokenCredential
+	var err error
+	useDefaultCredential, ok := lookupEnv("USE_DEFAULT_CREDENTIAL")
+	if ok && useDefaultCredential == "true" {
+		cred, err = azidentity.NewDefaultAzureCredential(nil)
+	} else {
+		cred, err = azidentity.NewManagedIdentityCredential(nil)
+	}
 	if err != nil {
 		panic(err)
 	}
@@ -97,7 +135,8 @@ func GetListBlobs(
 	}
 
 	ctx := context.Background()
-	mapBlobs := make(map[string]string)
+	// Blob names and their SAS URLs
+	mapBlobs := make(map[string]BlobInfo)
 	slog.Info("Paging.")
 	for pager.More() {
 		resp, err := pager.NextPage(ctx)
@@ -124,7 +163,10 @@ func GetListBlobs(
 				*(_blob.Name),
 				sasQueryParams.Encode(),
 			)
-			mapBlobs[*(_blob.Name)] = sasURL
+			mapBlobs[*(_blob.Name)] = BlobInfo{
+				sasURL,
+				ByteCountIEC(*_blob.Properties.ContentLength),
+			}
 		}
 	}
 

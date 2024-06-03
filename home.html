@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
+        <title>Blob Browser</title>
+    </head>
+    <body>
+        <section class="section">
+            <div class="container">
+                <h1 class="title">
+                    {{.Title}}
+                </h1>
+                <table class="table is-striped is-hoverable is-fullwidth">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Size</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range $key, $value := .Blobs}}
+                        <tr>
+                            <td>
+                                <a href="{{$value.URL}}">{{$key}}</a>
+                            </td>
+                            <td>
+                                {{$value.Size}}
+                            </td>
+                        </tr>
+                        {{end}}
+                        <td></td>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </body>
+</html>
