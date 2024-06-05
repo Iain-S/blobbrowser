@@ -22,7 +22,7 @@ func main() {
 		"/",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				Login,
+				ServeStaticPage("login.html", nil),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",
@@ -32,7 +32,7 @@ func main() {
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				GetListBlobs(Home),
+				GetListBlobs(),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -23,9 +22,7 @@ func TestHome(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ *bytes.Buffer) {
-	}
-	handler := http.HandlerFunc(GetListBlobs(handlerFunc))
+	handler := http.HandlerFunc(GetListBlobs())
 
 	handler.ServeHTTP(rr, req)
 
@@ -41,9 +38,7 @@ func TestGetListBlobs(_ *testing.T) {
 	}
 	fatal = func(_ ...interface{}) {
 	}
-	handlerFunc := func(_ http.ResponseWriter, _ *http.Request, _ *bytes.Buffer) {
-	}
 
-	listFunc := GetListBlobs(handlerFunc)
+	listFunc := GetListBlobs()
 	listFunc(*(new(http.ResponseWriter)), &http.Request{})
 }

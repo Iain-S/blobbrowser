@@ -28,18 +28,20 @@ var (
 	fatal     = log.Fatal
 )
 
+// Data to render the home page.
 type TemplateData struct {
 	Blobs map[string]BlobInfo
 	Title string
 }
 
+// Info about an Azure blob.
 type BlobInfo struct {
 	URL  string
 	Size string
 }
 
-// Home is the handler for the root path. It writes the list of blobs to the response.
-func Home(
+// Write a buffer back to the client.
+func WriteBufferToResponse(
 	w http.ResponseWriter,
 	r *http.Request,
 	buffer *bytes.Buffer,
@@ -55,23 +57,53 @@ func Home(
 	}
 }
 
-func Login(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	t := template.Must(template.ParseFiles("login.html"))
+// Return a handler function that writes a static page to the response.
+func ServeStaticPage(templateName string, data any) func(http.ResponseWriter, *http.Request) {
+	var b bytes.Buffer
+	foo := bufio.NewWriter(&b)
+	t := template.Must(template.ParseFiles(templateName))
 	err := t.Execute(
-		w,
-		nil,
+		foo,
+		data,
 	)
 	if err != nil {
 		panic(err)
 	}
+	err = foo.Flush()
+	if err != nil {
+		panic(err)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		WriteBufferToResponse(w, r, &b)
+	}
+}
+
+// Password protect a handler function with a secret.
+func PasswordProtect(
+	f func(http.ResponseWriter, *http.Request),
+	secret string,
+) func(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	closure := func(w http.ResponseWriter, r *http.Request) {
+		password := r.URL.Query().Get("_passwordx")
+		if password == "" {
+			http.Error(w, "No password supplied", http.StatusUnauthorized)
+			return
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(secret), []byte(password))
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		timerStart := time.Now()
+		f(w, r)
+		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
+	}
+	return closure
 }
 
 // https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
@@ -94,10 +126,8 @@ type HanderFuncs struct {
 	List http.HandlerFunc
 }
 
-// GetListBlobs wraps a handler function with a function that retrieves a list of blobs from Azure Blob Storage.
-func GetListBlobs(
-	f func(http.ResponseWriter, *http.Request, *bytes.Buffer),
-) func(http.ResponseWriter, *http.Request) {
+// Get a list of blobs from an Azure container.
+func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 	// Get a list of blobs from Azure Blob Storage
 	accountName, ok := lookupEnv("AZURE_STORAGE_ACCOUNT_NAME")
 	if !ok {
@@ -198,42 +228,11 @@ func GetListBlobs(
 		}
 	}
 
-	var b bytes.Buffer
-	foo := bufio.NewWriter(&b)
-	// use a http/template to render the list of blobs
-	t := template.Must(template.ParseFiles("home.html"))
-	err = t.Execute(
-		foo,
-		TemplateData{
-			mapBlobs,
-			"My Blobs",
-		},
+	return PasswordProtect(
+		ServeStaticPage(
+			"home.html",
+			TemplateData{mapBlobs, "My Blobs"},
+		),
+		secret,
 	)
-	if err != nil {
-		panic(err)
-	}
-	err = foo.Flush()
-	if err != nil {
-		panic(err)
-	}
-
-	closure := func(w http.ResponseWriter, r *http.Request) {
-		password := r.URL.Query().Get("_passwordx")
-		if password == "" {
-			http.Error(w, "No password supplied", http.StatusUnauthorized)
-			return
-		}
-
-		err = bcrypt.CompareHashAndPassword([]byte(secret), []byte(password))
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		timerStart := time.Now()
-		f(w, r, &b)
-		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
-	}
-
-	return closure
 }
