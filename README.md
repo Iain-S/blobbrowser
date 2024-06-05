@@ -29,7 +29,7 @@ A lightweight web server to list the contents of an Azure blob container with do
 
 ## Environment Variables
 
-1. *Optional* `USE_DEFAULT_CREDENTIAL="true"` will try several Azure authentication methods, such as CLI, VSCode and managed identity. Not setting this or setting it to any other value will use managed identity authentication.
+1. *Optional* `USE_DEFAULT_CREDENTIAL="true"` will try several Azure authentication methods, such as CLI, VSCode and managed identity. Not setting this or setting it to any other value will use managed identity authentication. You will need to use this option when running locally.
 1. *Mandatory* `AZURE_STORAGE_ACCOUNT_NAME="mystorageaccount"` will set the name of the Azure storage account.
 1. *Mandatory* `AZURE_CONTAINER_NAME="testcontainer1"` will set the name of the Azure storage account container.
 1. *Mandatory* `BLOBBROWSER_SECRET="cYdPWwBiUPm9pEcYdPWwBiUPm9pE"` is a password, which must be hashed with bcrypt. It will be used by users to access the `/list` page.
