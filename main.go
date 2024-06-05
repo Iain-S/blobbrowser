@@ -32,7 +32,7 @@ func main() {
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				GetListBlobs(),
+				GetListBlobs(GetSettings()),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",

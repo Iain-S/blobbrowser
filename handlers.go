@@ -6,10 +6,8 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -20,12 +18,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"golang.org/x/crypto/bcrypt"
-)
-
-// Variables that can be overridden for testing.
-var (
-	lookupEnv = os.LookupEnv
-	fatal     = log.Fatal
 )
 
 // Data to render the home page.
@@ -121,36 +113,18 @@ func ByteCountIEC(b int64) string {
 		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-type HanderFuncs struct {
-	Home http.HandlerFunc
-	List http.HandlerFunc
-}
-
 // Get a list of blobs from an Azure container.
-func GetListBlobs() func(http.ResponseWriter, *http.Request) {
+func GetListBlobs(s Settings) func(http.ResponseWriter, *http.Request) {
 	// Get a list of blobs from Azure Blob Storage
-	accountName, ok := lookupEnv("AZURE_STORAGE_ACCOUNT_NAME")
-	if !ok {
-		fatal("AZURE_STORAGE_ACCOUNT_NAME could not be found")
-	}
-	containerName, ok := lookupEnv("AZURE_CONTAINER_NAME")
-	if !ok {
-		fatal("AZURE_CONTAINER_NAME could not be found")
-	}
-	secret, ok := lookupEnv("BLOBBROWSER_SECRET")
-	if !ok {
-		fatal("BLOBBROWSER_SECRET could not be found")
-	}
-	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
+	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", s.accountName)
 
 	slog.Info("Creating Azure credential.")
-	// Note, use a managed identity credential in production to avoid timeouts.
 	var cred azcore.TokenCredential
 	var err error
-	useDefaultCredential, ok := lookupEnv("USE_DEFAULT_CREDENTIAL")
-	if ok && useDefaultCredential == "true" {
+	if s.defaultCredential {
 		cred, err = azidentity.NewDefaultAzureCredential(nil)
 	} else {
+		// Note, use a managed identity credential in production to avoid timeouts.
 		cred, err = azidentity.NewManagedIdentityCredential(nil)
 	}
 	if err != nil {
@@ -162,7 +136,7 @@ func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-	containerClient := client.ServiceClient().NewContainerClient(containerName)
+	containerClient := client.ServiceClient().NewContainerClient(s.containerName)
 
 	pager := containerClient.NewListBlobsHierarchyPager(
 		"",
@@ -173,7 +147,7 @@ func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 	)
 
 	svcClient, err := service.NewClient(
-		fmt.Sprintf("https://%s.blob.core.windows.net/", accountName),
+		fmt.Sprintf("https://%s.blob.core.windows.net/", s.accountName),
 		cred,
 		&service.ClientOptions{},
 	)
@@ -208,7 +182,7 @@ func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 				StartTime:     time.Now().UTC().Add(time.Second * -10),
 				ExpiryTime:    time.Now().UTC().Add(15 * time.Minute),
 				Permissions:   to.Ptr(sas.BlobPermissions{Read: true}).String(),
-				ContainerName: containerName,
+				ContainerName: s.containerName,
 			}.SignWithUserDelegation(udc)
 			if err != nil {
 				panic(err)
@@ -216,8 +190,8 @@ func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 
 			sasURL := fmt.Sprintf(
 				"https://%s.blob.core.windows.net/%s/%s?%s",
-				accountName,
-				containerName,
+				s.accountName,
+				s.containerName,
 				*(_blob.Name),
 				sasQueryParams.Encode(),
 			)
@@ -233,6 +207,6 @@ func GetListBlobs() func(http.ResponseWriter, *http.Request) {
 			"home.html",
 			TemplateData{mapBlobs, "My Blobs"},
 		),
-		secret,
+		s.secret,
 	)
 }

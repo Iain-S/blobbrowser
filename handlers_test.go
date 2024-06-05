@@ -8,9 +8,6 @@ import (
 )
 
 func TestHome(t *testing.T) {
-	lookupEnv = func(_ string) (string, bool) {
-		return "test", true
-	}
 	ctx := context.Background()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/", http.NoBody)
 	if err != nil {
@@ -22,7 +19,7 @@ func TestHome(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(GetListBlobs())
+	handler := http.HandlerFunc(GetListBlobs(Settings{}))
 
 	handler.ServeHTTP(rr, req)
 
@@ -33,12 +30,6 @@ func TestHome(t *testing.T) {
 }
 
 func TestGetListBlobs(_ *testing.T) {
-	lookupEnv = func(_ string) (string, bool) {
-		return "test", true
-	}
-	fatal = func(_ ...interface{}) {
-	}
-
-	listFunc := GetListBlobs()
+	listFunc := GetListBlobs(Settings{})
 	listFunc(*(new(http.ResponseWriter)), &http.Request{})
 }
