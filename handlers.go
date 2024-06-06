@@ -34,28 +34,25 @@ type BlobInfo struct {
 
 // Write a buffer back to the client.
 func AllowGet(
-	w http.ResponseWriter,
-	r *http.Request,
-	buffer *bytes.Buffer,
-) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	_, err := w.Write(buffer.Bytes())
-	if err != nil {
-		panic(err)
+	f func(http.ResponseWriter, *http.Request),
+) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Should allow GET.
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		f(w, r)
 	}
 }
 
 // Return a handler function that writes a static page to the response.
-func ServeStaticPage(
+func RenderTemplate(
 	templateName string,
 	data any,
 ) func(http.ResponseWriter, *http.Request) {
-	var b bytes.Buffer
-	foo := bufio.NewWriter(&b)
+	var buffer bytes.Buffer
+	foo := bufio.NewWriter(&buffer)
 	t := template.Must(template.ParseFiles(templateName))
 	err := t.Execute(
 		foo,
@@ -70,9 +67,12 @@ func ServeStaticPage(
 	}
 	return func(
 		w http.ResponseWriter,
-		r *http.Request,
+		_ *http.Request,
 	) {
-		AllowGet(w, r, &b)
+		_, err := w.Write(buffer.Bytes())
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -84,7 +84,7 @@ func PasswordProtect(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	closure := func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		password := r.URL.Query().Get("_passwordx")
 		if password == "" {
 			http.Error(w, "No password supplied", http.StatusUnauthorized)
@@ -101,7 +101,6 @@ func PasswordProtect(
 		f(w, r)
 		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
 	}
-	return closure
 }
 
 // https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
@@ -121,56 +120,68 @@ func ByteCountIEC(
 		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
+// Get a handler function that renders the home page.
 func GetHomePage(
 	s Settings,
-	creds azcore.TokenCredential,
 ) func(http.ResponseWriter, *http.Request) {
-	return GetPasswordProtectedHomePage(
-		GetBlobs(creds, s.accountName, s.containerName),
-		GetEncodedParams(creds, s.accountName, s.containerName),
-		s,
+	homePageData := GetHomePageData(
+		GetCredentials(s.defaultCredential),
+		s.accountName,
+		s.containerName,
+	)
+
+	return AllowGet(
+		PasswordProtect(
+			RenderTemplate(
+				"home.html",
+				TemplateData{homePageData, "My Blobs"},
+			),
+			s.secret,
+		),
 	)
 }
 
-func GetPasswordProtectedHomePage(
-	blobItems []*container.BlobItem,
-	encodedParams string,
-	s Settings,
-) func(http.ResponseWriter, *http.Request) {
+// Get data to show on the home page.
+func GetHomePageData(
+	creds azcore.TokenCredential,
+	accountName string,
+	containerName string,
+) map[string]BlobInfo {
+	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
+	blobs := GetBlobs(
+		serviceURL,
+		creds,
+		containerName,
+	)
+	params := GetEncodedParams(
+		serviceURL,
+		creds,
+		containerName,
+	)
 	mapBlobs := make(map[string]BlobInfo)
-	for _, _blob := range blobItems {
-		sasURL := fmt.Sprintf(
-			"https://%s.blob.core.windows.net/%s/%s?%s",
-			s.accountName,
-			s.containerName,
+	for _, _blob := range blobs {
+		sasURL := serviceURL + fmt.Sprintf(
+			"%s/%s?%s",
+			containerName,
 			*(_blob.Name),
-			encodedParams,
+			params,
 		)
 		mapBlobs[*(_blob.Name)] = BlobInfo{
 			sasURL,
 			ByteCountIEC(*_blob.Properties.ContentLength),
 		}
 	}
-
-	return PasswordProtect(
-		ServeStaticPage(
-			"home.html",
-			TemplateData{mapBlobs, "My Blobs"},
-		),
-		s.secret,
-	)
+	return mapBlobs
 }
 
 // Get a list of blobs from Azure Blob Storage.
 func GetBlobs(
+	serviceURL string,
 	cred azcore.TokenCredential,
-	accountName string,
 	containerName string,
 ) []*container.BlobItem {
-	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
-
 	slog.Info("Creating Azure Blob Storage client.")
-	client, err := azblob.NewClient(serviceURL, cred, nil)
+	client, err := azblob.NewClient(serviceURL, cred, &azblob.ClientOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -220,12 +231,12 @@ func GetCredentials(
 
 // GetEncodedParams returns the encoded SAS query parameters.
 func GetEncodedParams(
+	serviceURL string,
 	cred azcore.TokenCredential,
-	accountName string,
 	containerName string,
 ) string {
 	svcClient, err := service.NewClient(
-		fmt.Sprintf("https://%s.blob.core.windows.net/", accountName),
+		serviceURL,
 		cred,
 		&service.ClientOptions{},
 	)
@@ -242,7 +253,7 @@ func GetEncodedParams(
 	udc, err := svcClient.GetUserDelegationCredential(
 		context.Background(),
 		info,
-		nil,
+		&service.GetUserDelegationCredentialOptions{},
 	)
 	if err != nil {
 		panic(err)
