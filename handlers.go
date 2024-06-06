@@ -113,15 +113,15 @@ func ByteCountIEC(b int64) string {
 		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-// Get a list of blobs from an Azure container.
+// Get a list of blobs from Azure Blob Storage.
 func GetListBlobs(s Settings) func(http.ResponseWriter, *http.Request) {
-	// Get a list of blobs from Azure Blob Storage
 	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", s.accountName)
 
 	slog.Info("Creating Azure credential.")
 	var cred azcore.TokenCredential
 	var err error
 	if s.defaultCredential {
+		// Note, use a default credential locally as there will be no managed identity.
 		cred, err = azidentity.NewDefaultAzureCredential(nil)
 	} else {
 		// Note, use a managed identity credential in production to avoid timeouts.
