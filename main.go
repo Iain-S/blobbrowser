@@ -18,6 +18,7 @@ func main() {
 		ReadTimeout:  2 * time.Second,
 		Handler:      handlers.LoggingHandler(os.Stdout, http.DefaultServeMux),
 	}
+	// some trivial change
 	http.DefaultServeMux.Handle(
 		"/",
 		http.TimeoutHandler(
