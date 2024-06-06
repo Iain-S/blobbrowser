@@ -6,10 +6,8 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -22,24 +20,20 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Variables that can be overridden for testing.
-var (
-	lookupEnv = os.LookupEnv
-	fatal     = log.Fatal
-)
-
+// Data to render the home page.
 type TemplateData struct {
 	Blobs map[string]BlobInfo
 	Title string
 }
 
+// Info about an Azure blob.
 type BlobInfo struct {
 	URL  string
 	Size string
 }
 
-// Home is the handler for the root path. It writes the list of blobs to the response.
-func Home(
+// Write a buffer back to the client.
+func AllowGet(
 	w http.ResponseWriter,
 	r *http.Request,
 	buffer *bytes.Buffer,
@@ -55,27 +49,65 @@ func Home(
 	}
 }
 
-func Login(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	t := template.Must(template.ParseFiles("login.html"))
+// Return a handler function that writes a static page to the response.
+func ServeStaticPage(
+	templateName string,
+	data any,
+) func(http.ResponseWriter, *http.Request) {
+	var b bytes.Buffer
+	foo := bufio.NewWriter(&b)
+	t := template.Must(template.ParseFiles(templateName))
 	err := t.Execute(
-		w,
-		nil,
+		foo,
+		data,
 	)
 	if err != nil {
 		panic(err)
 	}
+	err = foo.Flush()
+	if err != nil {
+		panic(err)
+	}
+	return func(
+		w http.ResponseWriter,
+		r *http.Request,
+	) {
+		AllowGet(w, r, &b)
+	}
+}
+
+// Password protect a handler function with a secret.
+func PasswordProtect(
+	f func(http.ResponseWriter, *http.Request),
+	secret string,
+) func(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	closure := func(w http.ResponseWriter, r *http.Request) {
+		password := r.URL.Query().Get("_passwordx")
+		if password == "" {
+			http.Error(w, "No password supplied", http.StatusUnauthorized)
+			return
+		}
+
+		err := bcrypt.CompareHashAndPassword([]byte(secret), []byte(password))
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		timerStart := time.Now()
+		f(w, r)
+		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
+	}
+	return closure
 }
 
 // https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
-func ByteCountIEC(b int64) string {
+func ByteCountIEC(
+	b int64,
+) string {
 	const unit = 1024
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
@@ -89,43 +121,53 @@ func ByteCountIEC(b int64) string {
 		float64(b)/float64(div), "KMGTPE"[exp])
 }
 
-type HanderFuncs struct {
-	Home http.HandlerFunc
-	List http.HandlerFunc
+func GetHomePage(
+	s Settings,
+	creds azcore.TokenCredential,
+) func(http.ResponseWriter, *http.Request) {
+	return GetPasswordProtectedHomePage(
+		GetBlobs(creds, s.accountName, s.containerName),
+		GetEncodedParams(creds, s.accountName, s.containerName),
+		s,
+	)
 }
 
-// GetListBlobs wraps a handler function with a function that retrieves a list of blobs from Azure Blob Storage.
-func GetListBlobs(
-	f func(http.ResponseWriter, *http.Request, *bytes.Buffer),
+func GetPasswordProtectedHomePage(
+	blobItems []*container.BlobItem,
+	encodedParams string,
+	s Settings,
 ) func(http.ResponseWriter, *http.Request) {
-	// Get a list of blobs from Azure Blob Storage
-	accountName, ok := lookupEnv("AZURE_STORAGE_ACCOUNT_NAME")
-	if !ok {
-		fatal("AZURE_STORAGE_ACCOUNT_NAME could not be found")
+	mapBlobs := make(map[string]BlobInfo)
+	for _, _blob := range blobItems {
+		sasURL := fmt.Sprintf(
+			"https://%s.blob.core.windows.net/%s/%s?%s",
+			s.accountName,
+			s.containerName,
+			*(_blob.Name),
+			encodedParams,
+		)
+		mapBlobs[*(_blob.Name)] = BlobInfo{
+			sasURL,
+			ByteCountIEC(*_blob.Properties.ContentLength),
+		}
 	}
-	containerName, ok := lookupEnv("AZURE_CONTAINER_NAME")
-	if !ok {
-		fatal("AZURE_CONTAINER_NAME could not be found")
-	}
-	secret, ok := lookupEnv("BLOBBROWSER_SECRET")
-	if !ok {
-		fatal("BLOBBROWSER_SECRET could not be found")
-	}
-	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
 
-	slog.Info("Creating Azure credential.")
-	// Note, use a managed identity credential in production to avoid timeouts.
-	var cred azcore.TokenCredential
-	var err error
-	useDefaultCredential, ok := lookupEnv("USE_DEFAULT_CREDENTIAL")
-	if ok && useDefaultCredential == "true" {
-		cred, err = azidentity.NewDefaultAzureCredential(nil)
-	} else {
-		cred, err = azidentity.NewManagedIdentityCredential(nil)
-	}
-	if err != nil {
-		panic(err)
-	}
+	return PasswordProtect(
+		ServeStaticPage(
+			"home.html",
+			TemplateData{mapBlobs, "My Blobs"},
+		),
+		s.secret,
+	)
+}
+
+// Get a list of blobs from Azure Blob Storage.
+func GetBlobs(
+	cred azcore.TokenCredential,
+	accountName string,
+	containerName string,
+) []*container.BlobItem {
+	serviceURL := fmt.Sprintf("https://%s.blob.core.windows.net/", accountName)
 
 	slog.Info("Creating Azure Blob Storage client.")
 	client, err := azblob.NewClient(serviceURL, cred, nil)
@@ -142,6 +184,46 @@ func GetListBlobs(
 		},
 	)
 
+	ctx := context.Background()
+	blobItems := make([]*container.BlobItem, 0)
+	slog.Info("Paging.")
+	for pager.More() {
+		resp, err := pager.NextPage(ctx)
+		if err != nil {
+			slog.Error("Error in NextPage", slog.Any("error", err))
+			break
+		}
+		blobItems = append(blobItems, resp.Segment.BlobItems...)
+	}
+
+	return blobItems
+}
+
+func GetCredentials(
+	useDefaultCredential bool,
+) azcore.TokenCredential {
+	var cred azcore.TokenCredential
+	var err error
+	slog.Info("Creating Azure credential.")
+	if useDefaultCredential {
+		// Note, use a default credential locally as there will be no managed identity.
+		cred, err = azidentity.NewDefaultAzureCredential(nil)
+	} else {
+		// Note, use a managed identity credential in production to avoid timeouts.
+		cred, err = azidentity.NewManagedIdentityCredential(nil)
+	}
+	if err != nil {
+		panic(err)
+	}
+	return cred
+}
+
+// GetEncodedParams returns the encoded SAS query parameters.
+func GetEncodedParams(
+	cred azcore.TokenCredential,
+	accountName string,
+	containerName string,
+) string {
 	svcClient, err := service.NewClient(
 		fmt.Sprintf("https://%s.blob.core.windows.net/", accountName),
 		cred,
@@ -157,83 +239,26 @@ func GetListBlobs(
 		Start:  to.Ptr(now.UTC().Format(sas.TimeFormat)),
 		Expiry: to.Ptr(expiry.UTC().Format(sas.TimeFormat)),
 	}
-	udc, err := svcClient.GetUserDelegationCredential(context.Background(), info, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	ctx := context.Background()
-	// Blob names and their SAS URLs
-	mapBlobs := make(map[string]BlobInfo)
-	slog.Info("Paging.")
-	for pager.More() {
-		resp, err := pager.NextPage(ctx)
-		if err != nil {
-			slog.Error("Error in NextPage", slog.Any("error", err))
-			break
-		}
-		for _, _blob := range resp.Segment.BlobItems {
-			sasQueryParams, err := sas.BlobSignatureValues{
-				Protocol:      sas.ProtocolHTTPS,
-				StartTime:     time.Now().UTC().Add(time.Second * -10),
-				ExpiryTime:    time.Now().UTC().Add(15 * time.Minute),
-				Permissions:   to.Ptr(sas.BlobPermissions{Read: true}).String(),
-				ContainerName: containerName,
-			}.SignWithUserDelegation(udc)
-			if err != nil {
-				panic(err)
-			}
-
-			sasURL := fmt.Sprintf(
-				"https://%s.blob.core.windows.net/%s/%s?%s",
-				accountName,
-				containerName,
-				*(_blob.Name),
-				sasQueryParams.Encode(),
-			)
-			mapBlobs[*(_blob.Name)] = BlobInfo{
-				sasURL,
-				ByteCountIEC(*_blob.Properties.ContentLength),
-			}
-		}
-	}
-
-	var b bytes.Buffer
-	foo := bufio.NewWriter(&b)
-	// use a http/template to render the list of blobs
-	t := template.Must(template.ParseFiles("home.html"))
-	err = t.Execute(
-		foo,
-		TemplateData{
-			mapBlobs,
-			"My Blobs",
-		},
+	udc, err := svcClient.GetUserDelegationCredential(
+		context.Background(),
+		info,
+		nil,
 	)
 	if err != nil {
 		panic(err)
 	}
-	err = foo.Flush()
+	// A container-level SAS
+	sasQueryParams, err := sas.BlobSignatureValues{
+		Protocol:      sas.ProtocolHTTPS,
+		StartTime:     time.Now().UTC().Add(time.Second * -10),
+		ExpiryTime:    time.Now().UTC().Add(15 * time.Minute),
+		Permissions:   to.Ptr(sas.ContainerPermissions{Read: true}).String(),
+		BlobName:      "",
+		ContainerName: containerName,
+	}.SignWithUserDelegation(udc)
 	if err != nil {
 		panic(err)
 	}
 
-	closure := func(w http.ResponseWriter, r *http.Request) {
-		password := r.URL.Query().Get("_passwordx")
-		if password == "" {
-			http.Error(w, "No password supplied", http.StatusUnauthorized)
-			return
-		}
-
-		err = bcrypt.CompareHashAndPassword([]byte(secret), []byte(password))
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		timerStart := time.Now()
-		f(w, r, &b)
-		slog.Info("Request took", slog.String("t", time.Since(timerStart).String()))
-	}
-
-	return closure
+	return sasQueryParams.Encode()
 }

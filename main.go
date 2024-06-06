@@ -22,17 +22,22 @@ func main() {
 		"/",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				Login,
+				ServeStaticPage("login.html", nil),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",
 		),
 	)
+	settings := GetSettings()
+	credentials := GetCredentials(settings.defaultCredential)
 	http.DefaultServeMux.Handle(
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				GetListBlobs(Home),
+				GetHomePage(
+					settings,
+					credentials,
+				),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",
