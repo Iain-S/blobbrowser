@@ -28,11 +28,16 @@ func main() {
 			"<html><body>Request timeout!</body></html>\n",
 		),
 	)
+	settings := GetSettings()
+	credentials := GetCredentials(settings.defaultCredential)
 	http.DefaultServeMux.Handle(
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				GetListBlobs(GetSettings()),
+				GetHomePage(
+					settings,
+					credentials,
+				),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",
