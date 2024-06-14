@@ -56,8 +56,8 @@ func TestServeStatic(t *testing.T) {
 	}
 }
 
-// Should allow GET.
 func TestAllowGet(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, tt := range []struct {
 		method         string
@@ -68,26 +68,33 @@ func TestAllowGet(t *testing.T) {
 		{http.MethodPut, http.StatusMethodNotAllowed},
 		{http.MethodPatch, http.StatusMethodNotAllowed},
 	} {
-		req, err := http.NewRequestWithContext(ctx, tt.method, "/", http.NoBody)
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run(
+			tt.method,
+			func(t *testing.T) {
+				t.Parallel()
+				req, err := http.NewRequestWithContext(ctx, tt.method, "/", http.NoBody)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(AllowGet(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
+				rr := httptest.NewRecorder()
+				handler := http.HandlerFunc(AllowGet(func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				}))
 
-		handler.ServeHTTP(rr, req)
-		expected := http.StatusOK
-		if status := rr.Code; status != tt.expectedStatus {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				status, expected)
-		}
+				handler.ServeHTTP(rr, req)
+				expected := http.StatusOK
+				if status := rr.Code; status != tt.expectedStatus {
+					t.Errorf("handler returned wrong status code: got %v want %v",
+						status, expected)
+				}
+			},
+		)
 	}
 }
 
 func TestPasswordProtect(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	for _, tt := range []struct {
 		query          string
@@ -97,32 +104,36 @@ func TestPasswordProtect(t *testing.T) {
 		{"/?_passwordx=wrong-pass", http.StatusUnauthorized},
 		{"/", http.StatusUnauthorized},
 	} {
+		t.Run(tt.query, func(t *testing.T) {
+			t.Parallel()
 
-		req, err := http.NewRequestWithContext(
-			ctx,
-			http.MethodGet,
-			tt.query,
-			http.NoBody,
+			req, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodGet,
+				tt.query,
+				http.NoBody,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rr := httptest.NewRecorder()
+			handler := http.HandlerFunc(
+				PasswordProtect(
+					func(w http.ResponseWriter, _ *http.Request) {
+						w.WriteHeader(http.StatusOK)
+					},
+					// hashed "qwerty"
+					"$2y$10$RgvwyipsCjwA5LmTCOcCQO0m.2iucAiLfuc/GodWNP3nTPYCEmoNe",
+				),
+			)
+
+			handler.ServeHTTP(rr, req)
+			if status := rr.Code; status != tt.expectedStatus {
+				t.Errorf("handler returned wrong status code: got %v want %v",
+					status, tt.expectedStatus)
+			}
+		},
 		)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		rr := httptest.NewRecorder()
-		handler := http.HandlerFunc(
-			PasswordProtect(
-				func(w http.ResponseWriter, _ *http.Request) {
-					w.WriteHeader(http.StatusOK)
-				},
-				// hashed "qwerty"
-				"$2y$10$RgvwyipsCjwA5LmTCOcCQO0m.2iucAiLfuc/GodWNP3nTPYCEmoNe",
-			),
-		)
-
-		handler.ServeHTTP(rr, req)
-		if status := rr.Code; status != tt.expectedStatus {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				status, tt.expectedStatus)
-		}
 	}
 }

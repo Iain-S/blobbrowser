@@ -25,7 +25,9 @@ A lightweight web server to list the contents of an Azure blob container with do
 
 1. Install pre-commit hooks with `pre-commit install --install-hooks`.
 1. Limit line length with `golines -w *.go`.
-1. Format with `go fmt -w *.go`
+1. Format with `go fmt -w *.go`.
+1. Run tests with `go test -coverprofile cover.out`.
+1. View test coverage with `go tool cover -html=cover.out`.
 
 ## Environment Variables
 
