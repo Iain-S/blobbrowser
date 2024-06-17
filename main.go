@@ -10,15 +10,25 @@ import (
 	"github.com/gorilla/handlers"
 )
 
-// Start a webserver and listen on port 80.
-func main() {
-	srv := &http.Server{
+// Variables that can be overridden for testing.
+var (
+	getServer = getServerFunc
+	logFatal  = func(e error) { log.Fatal(e) }
+)
+
+func getServerFunc(mux *http.ServeMux) *http.Server {
+	return &http.Server{
 		Addr:         ":80",
 		WriteTimeout: 2 * time.Second,
 		ReadTimeout:  2 * time.Second,
-		Handler:      handlers.LoggingHandler(os.Stdout, http.DefaultServeMux),
+		Handler:      handlers.LoggingHandler(os.Stdout, mux),
 	}
-	http.DefaultServeMux.Handle(
+}
+
+// Start a webserver and listen on port 80.
+func main() {
+	mux := http.NewServeMux()
+	mux.Handle(
 		"/",
 		http.TimeoutHandler(
 			http.HandlerFunc(
@@ -28,7 +38,7 @@ func main() {
 			"<html><body>Request timeout!</body></html>\n",
 		),
 	)
-	http.DefaultServeMux.Handle(
+	mux.Handle(
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
@@ -40,8 +50,9 @@ func main() {
 			"<html><body>Request timeout!</body></html>\n",
 		),
 	)
+	srv := getServer(mux)
 	slog.Info("Starting server...")
-	log.Fatal(
+	logFatal(
 		srv.ListenAndServe(),
 	)
 }

@@ -32,9 +32,11 @@ type BlobInfo struct {
 	Size string
 }
 
+var GetHomePage = GetHomePageFunc
+
 // Write a buffer back to the client.
 func AllowGet(
-	f func(http.ResponseWriter, *http.Request),
+	f http.HandlerFunc,
 ) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Should allow GET.
@@ -104,7 +106,7 @@ func PasswordProtect(
 }
 
 // Get a handler function that renders the home page.
-func GetHomePage(
+func GetHomePageFunc(
 	s Settings,
 ) func(http.ResponseWriter, *http.Request) {
 	homePageData := GetHomePageData(
