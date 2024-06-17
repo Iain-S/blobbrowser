@@ -4,5 +4,9 @@
 # ...except for the bare necessities
 !go.mod
 !go.sum
-!main.go
 !handlers.go
+!main.go
+!settings.go
+!utils.go
+!home.html
+!login.html

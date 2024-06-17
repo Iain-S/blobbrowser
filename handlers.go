@@ -32,12 +32,13 @@ type BlobInfo struct {
 	Size string
 }
 
-// Write a buffer back to the client.
+var GetHomePage = GetHomePageFunc
+
+// Only allow GET requests.
 func AllowGet(
-	f func(http.ResponseWriter, *http.Request),
+	f http.HandlerFunc,
 ) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Should allow GET.
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
@@ -103,25 +104,8 @@ func PasswordProtect(
 	}
 }
 
-// https://yourbasic.org/golang/formatting-byte-size-to-human-readable-format/
-func ByteCountIEC(
-	b int64,
-) string {
-	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB",
-		float64(b)/float64(div), "KMGTPE"[exp])
-}
-
 // Get a handler function that renders the home page.
-func GetHomePage(
+func GetHomePageFunc(
 	s Settings,
 ) func(http.ResponseWriter, *http.Request) {
 	homePageData := GetHomePageData(
@@ -134,7 +118,7 @@ func GetHomePage(
 		PasswordProtect(
 			RenderTemplate(
 				"home.html",
-				TemplateData{homePageData, "My Blobs"},
+				TemplateData{homePageData, s.title},
 			),
 			s.secret,
 		),
