@@ -4,13 +4,13 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.0/css/bulma.min.css">
-        <title>Blob Browser</title>
+        <title>{{.}}</title>
     </head>
     <body>
         <section class="section">
             <div class="container">
                 <h1 class="title">
-                    Login
+                    {{.}} Login
                 </h1>
                 <form method="get" action="/list">
 					<input type="password" name="_passwordx" placeholder="Password" required>

@@ -2,7 +2,24 @@ package main
 
 import "testing"
 
-func TestGetSettings(t *testing.T) {
+func TestGetSettingsMin(t *testing.T) {
+	requireEnv = func(_ string) string {
+		return "xy"
+	}
+	getEnv = func(_ string) string {
+		return ""
+	}
+	settings := GetSettings()
+	if !(settings.accountName == "xy" &&
+		settings.containerName == "xy" &&
+		!settings.defaultCredential &&
+		settings.secret == "xy" &&
+		settings.title == "Blob Browser") {
+		t.Errorf("Error: %+v", settings)
+	}
+}
+
+func TestGetSettingsMax(t *testing.T) {
 	requireEnv = func(_ string) string {
 		return "xy"
 	}
@@ -13,7 +30,8 @@ func TestGetSettings(t *testing.T) {
 	if !(settings.accountName == "xy" &&
 		settings.containerName == "xy" &&
 		settings.defaultCredential &&
-		settings.secret == "xy") {
+		settings.secret == "xy" &&
+		settings.title == "true") {
 		t.Errorf("Error: %+v", settings)
 	}
 }

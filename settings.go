@@ -17,6 +17,7 @@ type Settings struct {
 	containerName     string // The name of the Azure Storage container.
 	defaultCredential bool   // Use a default Azure credential.
 	secret            string // The (hashed) secret to use for authentication.
+	title             string // The title of the web page.
 }
 
 func requireEnvFunc(key string) string {
@@ -35,5 +36,12 @@ func GetSettings() Settings {
 			return getEnv("USE_DEFAULT_CREDENTIAL") == "true"
 		}(),
 		secret: requireEnv("BLOBBROWSER_SECRET"),
+		title: func() string {
+			envTitle := getEnv("BLOBBROWSER_TITLE")
+			if envTitle == "" {
+				return "Blob Browser"
+			}
+			return envTitle
+		}(),
 	}
 }

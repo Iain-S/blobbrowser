@@ -28,11 +28,12 @@ func getServerFunc(mux *http.ServeMux) *http.Server {
 // Start a webserver and listen on port 80.
 func main() {
 	mux := http.NewServeMux()
+	settings := GetSettings()
 	mux.Handle(
 		"/",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				RenderTemplate("login.html", nil),
+				RenderTemplate("login.html", settings.title),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",
@@ -42,9 +43,7 @@ func main() {
 		"/list",
 		http.TimeoutHandler(
 			http.HandlerFunc(
-				GetHomePage(
-					GetSettings(),
-				),
+				GetHomePage(settings),
 			),
 			1*time.Second,
 			"<html><body>Request timeout!</body></html>\n",

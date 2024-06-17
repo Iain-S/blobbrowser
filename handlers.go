@@ -118,7 +118,7 @@ func GetHomePageFunc(
 		PasswordProtect(
 			RenderTemplate(
 				"home.html",
-				TemplateData{homePageData, "My Blobs"},
+				TemplateData{homePageData, s.title},
 			),
 			s.secret,
 		),
