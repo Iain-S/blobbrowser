@@ -34,12 +34,11 @@ type BlobInfo struct {
 
 var GetHomePage = GetHomePageFunc
 
-// Write a buffer back to the client.
+// Only allow GET requests.
 func AllowGet(
 	f http.HandlerFunc,
 ) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Should allow GET.
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
