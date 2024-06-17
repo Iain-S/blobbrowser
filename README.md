@@ -1,8 +1,11 @@
 # BlobBrowser
 
-A lightweight web server to list the contents of an Azure blob container with download links. The server reads the container contents on startup so will need to be restarted for changes to the container to be reflected.
+A lightweight web server to list the contents of an Azure blob container with download links.
+The server reads the container contents on startup so will need to be restarted for changes to the container to be reflected.
 
-**Note** By design, this is insecure. The downloads page is protected only by a single hashed string, which is sent in the GET request query parameters. Do not give this web server access to anything that should be kept private.
+**Note** By design, this is insecure.
+The downloads page is protected only by a single hashed string, which is sent in the GET request query parameters.
+Do not give this web server access to anything that should be kept private.
 
 ## Running Locally
 
@@ -15,9 +18,12 @@ A lightweight web server to list the contents of an Azure blob container with do
 
 ## Running on Azure
 
-1. If you don't have a container registry already, create one. You can create an Azure Container Registry with `az acr create`.
-1. Login to it with `az acr login --name myregistry`. See [Push and Pull docs](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-docker-cli?tabs=azure-cli).
-1. Build an image with `docker build`. If using an Azure ACR, the command will be something like `docker build --platform="linux/amd64" --tag "myregistry.azurecr.io/images/blobbrowser" .`.
+1. If you don't have a container registry already, create one.
+   You can create an Azure Container Registry with `az acr create`.
+1. Login to it with `az acr login --name myregistry`.
+   See [Push and Pull docs](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-docker-cli?tabs=azure-cli).
+1. Build an image with `docker build`.
+   If using an Azure ACR, the command will be something like `docker build --platform="linux/amd64" --tag "myregistry.azurecr.io/images/blobbrowser" .`.
 1. Push the image with `docker push`.
 1. Set up an Azure App Service that runs the pushed image.
 1. Set [environment variables](#environment-variables).
@@ -33,11 +39,14 @@ A lightweight web server to list the contents of an Azure blob container with do
 
 ## Environment Variables
 
-- *Optional* `USE_DEFAULT_CREDENTIAL="true"` will try several Azure authentication methods, such as CLI, VSCode and managed identity. Not setting this or setting it to any other value will use managed identity authentication. You will need to use this option when running locally.
+- *Optional* `USE_DEFAULT_CREDENTIAL="true"` will try several Azure authentication methods, such as CLI, VSCode and managed identity.
+  Not setting this or setting it to any other value will use managed identity authentication.
+  You will need to use this option when running locally.
 - *Optional* `BLOBBROWSER_TITLE="Your Page Title Here"` to customise the page title and heading.
 - *Mandatory* `AZURE_STORAGE_ACCOUNT_NAME="mystorageaccount"` will set the name of the Azure storage account.
 - *Mandatory* `AZURE_CONTAINER_NAME="mytestcontainer"` will set the name of the Azure storage account container.
-- *Mandatory* `BLOBBROWSER_SECRET="cYdPWwBiUPm9pEcYdPWwBiUPm9pE"` is a password, which must be hashed with bcrypt (e.g [here](https://bcrypt.online/)). It will be used by users to access the `/list` page.
+- *Mandatory* `BLOBBROWSER_SECRET="cYdPWwBiUPm9pEcYdPWwBiUPm9pE"` is a password, which must be hashed with bcrypt (e.g [here](https://bcrypt.online/)).
+  It will be used by users to access the `/list` page.
 
 ## Permissions
 
