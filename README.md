@@ -3,6 +3,8 @@
 A lightweight web server to list the contents of an Azure blob container with download links.
 The server reads the container contents on startup so will need to be restarted for changes to the container to be reflected.
 
+![home page screenshot](./my_blobs.png)
+
 **Note** By design, this is insecure.
 The downloads page is protected only by a single hashed string, which is sent in the GET request query parameters.
 Do not give this web server access to anything that should be kept private.
