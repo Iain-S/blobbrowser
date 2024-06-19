@@ -4,7 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 )
 
 type QueryStatus struct {
@@ -142,5 +148,67 @@ func TestPasswordProtect(t *testing.T) {
 				}
 			}(tt),
 		)
+	}
+}
+
+type MockSigValues struct {
+	ExpiryTime    time.Time
+	ContainerName string
+}
+
+func (me MockSigValues) SignWithUserDelegation(
+	_ *service.UserDelegationCredential,
+) (sas.QueryParameters, error) {
+	values := url.Values{}
+	values["se"] = []string{me.ExpiryTime.Format(sas.TimeFormat)}
+	params := sas.NewQueryParameters(
+		values,
+		true,
+	)
+	return params, nil
+}
+
+type MockClient struct {
+	info service.KeyInfo
+}
+
+func (me *MockClient) GetUserDelegationCredential(
+	_ context.Context,
+	info service.KeyInfo,
+	_ *service.GetUserDelegationCredentialOptions,
+) (*service.UserDelegationCredential, error) {
+	me.info = info
+	udc := service.UserDelegationCredential{}
+	return &udc, nil
+}
+
+func TestGetEncodedParams(t *testing.T) {
+	GetSignatureValues = func(
+		expiryTime time.Time,
+		containerName string,
+	) signatureValuesInterface {
+		return MockSigValues{
+			ExpiryTime:    expiryTime,
+			ContainerName: containerName,
+		}
+	}
+
+	mockClient := &MockClient{}
+	GetServiceClient = func(
+		_ string,
+		_ azcore.TokenCredential,
+	) serviceClientInterface {
+		return mockClient
+	}
+	params := GetEncodedParams("http://localhost", nil, "containerName")
+	expected := "se=" + url.QueryEscape(*mockClient.info.Expiry)
+	if expected != params {
+		t.Error("Client and SAS expiry times don't match")
+	}
+	expected = "se=" + url.QueryEscape(
+		time.Now().UTC().Add(-10*time.Second).Add(3*7*24*time.Hour).Format(sas.TimeFormat),
+	)
+	if expected != params {
+		t.Error("Client and SAS expiry times should be three weeks from ten seconds ago")
 	}
 }

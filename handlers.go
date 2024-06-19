@@ -32,7 +32,12 @@ type BlobInfo struct {
 	Size string
 }
 
-var GetHomePage = GetHomePageFunc
+// Function indirection for testing.
+var (
+	GetHomePage        = GetHomePageFunc
+	GetServiceClient   = GetServiceClientFunc
+	GetSignatureValues = GetSignatureValuesFunc
+)
 
 // Only allow GET requests.
 func AllowGet(
@@ -194,6 +199,7 @@ func GetBlobs(
 	return blobItems
 }
 
+// Get Azure credentials.
 func GetCredentials(
 	useDefaultCredential bool,
 ) azcore.TokenCredential {
@@ -213,12 +219,23 @@ func GetCredentials(
 	return cred
 }
 
-// GetEncodedParams returns the encoded SAS query parameters.
-func GetEncodedParams(
+type serviceClientInterface interface {
+	GetUserDelegationCredential(
+		context.Context,
+		service.KeyInfo,
+		*service.GetUserDelegationCredentialOptions,
+	) (*service.UserDelegationCredential, error)
+}
+
+type signatureValuesInterface interface {
+	SignWithUserDelegation(*service.UserDelegationCredential) (sas.QueryParameters, error)
+}
+
+// Get an Azure Blob Storage service client or panic.
+func GetServiceClientFunc(
 	serviceURL string,
 	cred azcore.TokenCredential,
-	containerName string,
-) string {
+) serviceClientInterface {
 	svcClient, err := service.NewClient(
 		serviceURL,
 		cred,
@@ -227,9 +244,35 @@ func GetEncodedParams(
 	if err != nil {
 		panic(err)
 	}
+	return svcClient
+}
+
+// Get a signature for a SAS.
+func GetSignatureValuesFunc(
+	expiryTime time.Time,
+	containerName string,
+) signatureValuesInterface {
+	// A container-level SAS
+	return sas.BlobSignatureValues{
+		Protocol:      sas.ProtocolHTTPS,
+		StartTime:     time.Now().UTC().Add(time.Second * -10),
+		ExpiryTime:    expiryTime,
+		Permissions:   to.Ptr(sas.ContainerPermissions{Read: true}).String(),
+		BlobName:      "",
+		ContainerName: containerName,
+	}
+}
+
+// Get URL-encoded encoded SAS query parameters.
+func GetEncodedParams(
+	serviceURL string,
+	cred azcore.TokenCredential,
+	containerName string,
+) string {
+	svcClient := GetServiceClient(serviceURL, cred)
 	// Set current and past time and create key
 	now := time.Now().UTC().Add(-10 * time.Second)
-	expiry := now.Add(48 * time.Hour)
+	expiry := now.Add(3 * 7 * 24 * time.Hour)
 	info := service.KeyInfo{
 		Start:  to.Ptr(now.UTC().Format(sas.TimeFormat)),
 		Expiry: to.Ptr(expiry.UTC().Format(sas.TimeFormat)),
@@ -242,15 +285,8 @@ func GetEncodedParams(
 	if err != nil {
 		panic(err)
 	}
-	// A container-level SAS
-	sasQueryParams, err := sas.BlobSignatureValues{
-		Protocol:      sas.ProtocolHTTPS,
-		StartTime:     time.Now().UTC().Add(time.Second * -10),
-		ExpiryTime:    time.Now().UTC().Add(15 * time.Minute),
-		Permissions:   to.Ptr(sas.ContainerPermissions{Read: true}).String(),
-		BlobName:      "",
-		ContainerName: containerName,
-	}.SignWithUserDelegation(udc)
+	sigValues := GetSignatureValues(expiry, containerName)
+	sasQueryParams, err := sigValues.SignWithUserDelegation(udc)
 	if err != nil {
 		panic(err)
 	}
