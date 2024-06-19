@@ -2,6 +2,7 @@
 
 A lightweight web server to list the contents of an Azure blob container with download links.
 The server reads the container contents on startup so will need to be restarted for changes to the container to be reflected.
+Links are valid for three weeks from the time the server is started.
 
 ![home page screenshot](./my_blobs.png)
 
